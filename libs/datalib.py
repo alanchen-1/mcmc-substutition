@@ -55,3 +55,17 @@ def get_transition_matrix(digram_counts):
         transition_matrix[i] = get_frequencies(row)
     
     return transition_matrix
+
+def get_softmax_frequencies(char_counts):
+    mx = np.max(char_counts)
+    e_x = np.exp(char_counts - mx)
+    e_x = np.array(list(map(lambda cur_count: (np.exp(1 - mx) if cur_count == 0 else cur_count), e_x)))
+    return e_x / np.sum(e_x)
+
+def get_softmax_transition(digram_counts):
+    sz = len(digram_counts)
+    transition_matrix = np.empty((sz, sz))
+    for i, row in enumerate(digram_counts):
+        transition_matrix[i] = get_softmax_frequencies(row)
+    
+    return transition_matrix

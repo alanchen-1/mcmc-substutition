@@ -1,17 +1,18 @@
 from libs.datalib import *
 from libs.mcmclib import *
 import string
+import os
 
-INFILE = "data/corpus/war-and-peace.txt"
-OUTFILE = "data/corpus/war-and-peace-clean.txt"
-IN_CIPHERTEXT = "data/test/f_5.txt"
+#INFILE = "data/corpus/war-and-peace.txt"
+#OUTFILE = "data/corpus/war-and-peace-clean.txt"
+#cleaner(INFILE, OUTFILE)
+
+IN_CIPHERTEXT = "data/test/j_5.txt"
 OUT_DECODED = "./results/" + IN_CIPHERTEXT.split("/")[-1]
-print(OUT_DECODED)
+BETA = 0.5
 ciphertext = read_ciphertext(IN_CIPHERTEXT)
 STATE_SPACE = list(string.ascii_lowercase) + [' ']
 CONVERGENCE = 5000
-
-cleaner(INFILE, OUTFILE)
 
 def make_letter_dict(state_space):
     dict = {}
@@ -21,10 +22,21 @@ def make_letter_dict(state_space):
     return dict
 
 letter_dict = make_letter_dict(STATE_SPACE)
-char_counts, digram_counts = get_counts(OUTFILE, letter_dict)
+
+
+char_counts = np.zeros(27)
+digram_counts = np.zeros((27, 27))
+CLEAN_DIR = './data/corpus/cleaned/'
+for clean in os.listdir(CLEAN_DIR):
+    cur_char_counts, cur_digram_counts = get_counts(CLEAN_DIR + clean, letter_dict)
+    char_counts += cur_char_counts
+    digram_counts += cur_digram_counts
 
 char_freqs = get_frequencies(char_counts)
 transition_matrix = get_transition_matrix(digram_counts)
+
+#char_freqs = get_softmax_frequencies(char_counts)
+#transition_matrix = get_softmax_transition(digram_counts)
 
 def naive_forward_mcmc(ciphertext, iterations):
     permutation = Permutation()
@@ -39,7 +51,7 @@ def naive_forward_mcmc(ciphertext, iterations):
         likelihood_cur = naive_likelihood(ciphertext, permutation, char_freqs, transition_matrix, letter_dict)
         likelihood_new = naive_likelihood(ciphertext, new_permutation, char_freqs, transition_matrix, letter_dict)
 
-        prob_accept = np.exp(-1 * max(likelihood_new - likelihood_cur, 0))
+        prob_accept = np.exp(-BETA * max(likelihood_new - likelihood_cur, 0))
 
         if random.random() < prob_accept:
             permutation = new_permutation
@@ -57,27 +69,29 @@ def fast_forward_mcmc(iterations):
     permutation = Permutation()
     convergence_count = 0
     
+    likelihood_cur = fast_likelihood(ciphertext_counts, permutation, transition_matrix, letter_dict)
+    
     for iteration in range(iterations):
         if iteration % 1000 == 0:
             print("Iteration", iteration)
             print(decode_ciphertext(ciphertext, permutation, length = 100))
 
         new_permutation = permutation.iterate()
-        likelihood_cur = fast_likelihood(ciphertext_counts, permutation, transition_matrix, letter_dict)
         likelihood_new = fast_likelihood(ciphertext_counts, new_permutation, transition_matrix, letter_dict)
 
-        prob_accept = np.exp(-1 * max(likelihood_new - likelihood_cur, 0))
+        prob_accept = np.exp(-BETA * max(likelihood_new - likelihood_cur, 0))
 
         if random.random() < prob_accept:
             permutation = new_permutation
             convergence_count = 0
+            likelihood_cur = likelihood_new
         else:
             convergence_count += 1
         
         if convergence_count >= CONVERGENCE:
             break;
     
-    return permutation, fast_likelihood(ciphertext_counts, permutation, transition_matrix, letter_dict)
+    return permutation, likelihood_cur
 
 def full_mcmc(iterations, each_iterations=50000):
     best_energy = float('inf')
